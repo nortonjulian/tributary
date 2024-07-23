@@ -1,17 +1,16 @@
-# import the flask web framework
 import json
-import redis as redis
+import redis
 from flask import Flask, request
 from loguru import logger
 
+# Constants
 HISTORY_LENGTH = 10
 DATA_KEY = "engine_temperature"
 
-# create a Flask server, and allow us to interact with it using the app variable
+# Initialize Flask application
 app = Flask(__name__)
 
-
-# define an endpoint which accepts POST requests, and is reachable from the /record endpoint
+# Record engine temperature endpoint
 @app.route('/record', methods=['POST'])
 def record_engine_temperature():
     payload = request.get_json(force=True)
@@ -29,11 +28,30 @@ def record_engine_temperature():
     engine_temperature_values = database.lrange(DATA_KEY, 0, -1)
     logger.info(f"engine temperature list now contains these values: {engine_temperature_values}")
 
+    current_engine_temperature = float(engine_temperature_values[0])
+    average_engine_temperature = sum(map(float, engine_temperature_values)) / len(engine_temperature_values)
+
     logger.info(f"record request successful")
-    return {"success": True}, 200
+    return {
+        "success": True,
+        "current_engine_temperature": current_engine_temperature,
+        "average_engine_temperature": average_engine_temperature
+    }, 200
 
-
-# practically identical to the above
+# Collect engine temperature endpoint
 @app.route('/collect', methods=['POST'])
 def collect_engine_temperature():
-    return {"success": True}, 200
+    database = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+    engine_temperature_values = database.lrange(DATA_KEY, 0, -1)
+
+    if not engine_temperature_values:
+        return {"success": False, "message": "No data available"}, 404
+
+    current_engine_temperature = float(engine_temperature_values[0])
+    average_engine_temperature = sum(map(float, engine_temperature_values)) / len(engine_temperature_values)
+
+    return {
+        "success": True,
+        "current_engine_temperature": current_engine_temperature,
+        "average_engine_temperature": average_engine_temperature
+    }, 200
